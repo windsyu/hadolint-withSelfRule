@@ -18,12 +18,13 @@ infixl 0 |>
 (|>) :: a -> (a -> b) -> b
 x |> f = f x
 
+-- 定义Dockerfile lint规则的严重程度
 data DLSeverity
-  = DLErrorC
-  | DLWarningC
-  | DLInfoC
-  | DLStyleC
-  | DLIgnoreC
+  = DLErrorC    -- 错误
+  | DLWarningC  -- 警告
+  | DLInfoC     -- 信息
+  | DLStyleC    -- 风格问题
+  | DLIgnoreC   -- 忽略
   deriving (Eq, Ord, Show, Generic, NFData)
 
 instance Yaml.FromYAML DLSeverity where
@@ -72,6 +73,7 @@ instance Pretty DLSeverity where
   pretty DLIgnoreC = "ignore"
 
 
+-- 规则代码类型
 newtype RuleCode = RuleCode {unRuleCode :: Text}
   deriving (Eq, Ord)
 
@@ -85,11 +87,12 @@ instance Pretty RuleCode where
   pretty rc = pretty $ show rc
 
 
+-- 检查失败记录
 data CheckFailure = CheckFailure
-  { code :: RuleCode,
-    severity :: DLSeverity,
-    message :: Text.Text,
-    line :: Linenumber
+  { code :: RuleCode,     -- 规则代码
+    severity :: DLSeverity, -- 严重程度
+    message :: Text.Text,   -- 错误信息
+    line :: Linenumber     -- 行号
   }
   deriving (Show, Eq)
 
@@ -100,23 +103,25 @@ instance Ord CheckFailure where
 type Failures = Seq.Seq CheckFailure
 
 
+-- 状态类型，包含失败记录和自定义状态
 data State a = State
-  { failures :: Failures,
-    state :: a
+  { failures :: Failures,  -- 失败记录序列
+    state :: a             -- 自定义状态
   }
   deriving (Show)
 
 
 type LabelName = Text.Text
 
+-- 标签类型定义
 data LabelType
-  = Email
-  | GitHash
-  | RawText
-  | Rfc3339
-  | SemVer
-  | Spdx
-  | Url
+  = Email    -- 邮箱
+  | GitHash  -- Git哈希
+  | RawText  -- 纯文本
+  | Rfc3339  -- RFC3339时间格式
+  | SemVer   -- 语义化版本
+  | Spdx     -- SPDX许可证标识
+  | Url      -- URL
   deriving (Eq, Show)
 
 readEitherLabelType :: Text -> Either Text LabelType
@@ -182,17 +187,12 @@ replaceWith newState s = s {state = newState}
 
 type Rule args = Foldl.Fold (InstructionPos args) Failures
 
--- | A simple rule that can be implemented in terms of returning True or False for each instruction
--- If you need to calculate some state to decide upon past information, use 'customRule'
+-- 简单规则定义
 simpleRule ::
-  -- | rule code
-  RuleCode ->
-  -- | severity for the rule
-  DLSeverity ->
-  -- | failure message for the rule
-  Text.Text ->
-  -- | step calculation for the rule. Returns True or False for each line in the dockerfile depending on its validity.
-  (Instruction args -> Bool) ->
+  RuleCode ->          -- 规则代码
+  DLSeverity ->        -- 严重程度
+  Text.Text ->         -- 错误信息
+  (Instruction args -> Bool) ->  -- 检查函数
   Rule args
 simpleRule code severity message checker = customRule step simpleState
   where
@@ -200,12 +200,10 @@ simpleRule code severity message checker = customRule step simpleState
       | checker instr = s
       | otherwise = s |> addFail (CheckFailure code severity message line)
 
--- | A rule that accumulates a State a. The state contains the collection of failed lines and a custom data
--- type that can be used to track properties for the rule. Each step always returns the new State, which offers
--- the ability to both accumulate properties and mark failures for every given instruction.
+-- 自定义规则，可以维护状态
 customRule ::
-  (Linenumber -> State a -> Instruction args -> State a) ->
-  State a ->
+  (Linenumber -> State a -> Instruction args -> State a) ->  -- 处理函数
+  State a ->  -- 初始状态
   Rule args
 customRule step initial = veryCustomRule step initial failures
 
